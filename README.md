@@ -1,4 +1,4 @@
-# uponor_knx_rf_thermostat
+# ESPhome component for interfacing Uponor  T-75 KNX RF thermostats
 
 This is ESPhome project for reading information sent by UPONOR T-75 KNX RF thermostats. It has been tested with ESP32 but should work with ESP8266 as well with minor changes.
 
