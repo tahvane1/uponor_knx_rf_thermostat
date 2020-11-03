@@ -3,7 +3,6 @@
 #include <Crc16.h>
 
 
-
 static const char *TAG = "KNXRFGATEWAY";
 static const char *SENSOR = "UPONOR";
 byte buffer[400] =  {0xFF};
@@ -42,11 +41,11 @@ class UponorThermostat {
         double target_temp;
         double current_temp;
         int battery_state = -1;
-        int rssi;
-        int lqi;
-        Sensor *current_temperature_sensor = new Sensor();
+        double rssi;
+        double lqi;
+        Sensor *current_temperature_sensor =  new Sensor();
         Sensor *target_temperature_sensor = new Sensor();
-        Sensor *battery_state_sensor = new Sensor();
+        esphome::binary_sensor::BinarySensor *battery_state_sensor = new esphome::binary_sensor::BinarySensor();
         Sensor *rssi_sensor = new Sensor();
         Sensor *lqi_sensor = new Sensor();
         UponorThermostat(const char* id,const char* name):id_(id),name_(name){
@@ -67,6 +66,7 @@ class UponorThermostat {
         }
         
         void update_battery_state(int state){
+            state = !state;
             if (battery_state != state){
                 battery_state = state;
                 battery_state_sensor->publish_state(battery_state);
@@ -88,15 +88,15 @@ class UponorThermostat {
 };
 
 
-class KNXRFGateway : public Component, public Sensor {
+class KNXRFGateway : public Component,  public Sensor {
 private:
     int knx_offset = 32;
-    char* ids_[];
-    char* names_[];
-    std::map<std::string,UponorThermostat*> sensors;
+    std::map<std::string, std::string> ids;
+
 
 public:
-
+    std::map<std::string,UponorThermostat*> sensors;
+    std::string status = "";
     KNXRFGateway(std::map<std::string,UponorThermostat*> thermostats){
         sensors = thermostats;
     }
@@ -172,7 +172,22 @@ public:
     }
 
 
-
+    void update_status(){
+        
+        std::map<std::string, std::string>::iterator it = ids.begin();
+        std::string text ="Seen ids:\n";
+        while (it !=  ids.end())
+        {
+            std::string id = it->first;
+            if (sensors.find(id) != sensors.end()){
+                text += id + "(" + sensors[id]->name_ +  "), last seen " + it->second +"\n";
+            } else {
+                text += id +", last seen " + it->second +"\n";
+            }
+            it++;
+        }
+        status = text;
+    }
 
     
     int mandecode(unsigned int a1) {
@@ -242,12 +257,9 @@ public:
         ELECHOUSE_cc1101.SpiWriteReg(CC1101_FSCAL3,  0xEF);
         ELECHOUSE_cc1101.SpiWriteReg(CC1101_FSCAL2,  0x2E);
         ELECHOUSE_cc1101.SpiWriteReg(CC1101_FSCAL1,  0x19);
-    for(int i=0 ; i<47 ; i++) {
-        Serial.print(i, HEX);
-        Serial.print(":");
-         ESP_LOGD(TAG, "REG: %02x", ELECHOUSE_cc1101.SpiReadReg(i));
-         Serial.print(" ");
-    }
+        for(int i=0 ; i<47 ; i++) {
+            ESP_LOGD(TAG, "REG: %02x", ELECHOUSE_cc1101.SpiReadReg(i));
+        }
 
 
         ESP_LOGD(TAG, "Setup done.");
@@ -315,11 +327,22 @@ public:
                     knxdata.crcError = crcError;
 
                     knxdata = parse(knxdata);
+
+                    if (!knxdata.crcError){
+                        //if(ids.find(knxdata.sensor_id) == ids.end()){
+                            ids[knxdata.sensor_id] =  homeassistant_time->now().strftime("%Y-%m-%d %H:%M");
+                            update_status();
+                        //}
+                    }
+
                     if (sensors.find(knxdata.sensor_id) != sensors.end()){
                         UponorThermostat *sensor = sensors[knxdata.sensor_id];
                         knxdata.sensor_name = sensor->name_;
                         ESP_LOGD(TAG,"Sensor %s (%s) in sensor list.", knxdata.sensor_id,sensor->name_);
                         if (!knxdata.crcError){
+
+
+
                             if (knxdata.target_address == 1){
                                 ESP_LOGD(SENSOR,"Target address == 1, updating current temperature");
                                 sensor->update_current_temp(knxdata.temperature);
@@ -349,4 +372,7 @@ public:
             }
         }
     }
+
+
+    
 };

@@ -1,0 +1,91 @@
+esphome:
+    name: esp32_knxrf_1
+    platform: ESP32
+    board: nodemcu-32s
+    includes:
+    - knx_rf.h
+    - Crc16.h
+    libraries:
+    - "SmartRC-CC1101-Driver-Lib"
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+
+# Enable logging
+logger:
+  level: INFO
+substitutions:
+  hostname: "esp32_knxrf_1"
+
+# Enable Home Assistant API
+api:
+   password: !secret api_password
+
+ota:
+   password: !secret ota_password
+
+custom_component:
+  - id: gateway
+    lambda: |-
+      std::map<std::string, UponorThermostat*> sensors;
+      auto sensor = new UponorThermostat("007400007850","Office");
+      sensors[sensor->id_] = sensor;
+      auto my_gateway = new KNXRFGateway(sensors);
+      App.register_component(my_gateway);
+      return {my_gateway};
+
+text_sensor:
+  - platform: template
+    name: "status"
+    update_interval: 60s
+    lambda: |- 
+         KNXRFGateway *c = static_cast<KNXRFGateway *>(const_cast<custom_component::CustomComponentConstructor *>(&gateway)->get_component(0));
+         return c->status;
+
+
+sensor:
+  - platform: wifi_signal
+    name: "KNXRF gateway WiFi Signal Sensor"
+    update_interval: 60s
+  - platform: custom
+    lambda: |-
+      KNXRFGateway *c = static_cast<KNXRFGateway *>(const_cast<custom_component::CustomComponentConstructor *>(&gateway)->get_component(0));
+      UponorThermostat *sensor = c->sensors["107400007850"];
+      return {sensor->current_temperature_sensor,sensor->target_temperature_sensor,sensor->rssi_sensor ,sensor->lqi_sensor };
+    sensors:
+      - id: office_current_temperature 
+        name: "Office current temperature"
+        unit_of_measurement: "°C"
+        accuracy_decimals: 2
+        icon: "mdi:thermometer"
+      - name: "Office target temperature"
+        unit_of_measurement: "°C"
+        accuracy_decimals: 1
+        icon: "mdi:thermometer"
+      - name: "Office thermostat rssi level"
+        icon: "mdi:wifi"
+        accuracy_decimals: 0
+        unit_of_measurement: "dB"
+      - name: "Office thermostat relative link quality "
+        icon: "mdi:wifi"
+        accuracy_decimals: 0
+        unit_of_measurement: "dB"
+
+
+
+binary_sensor:
+  - platform: status
+    name: "Uponor RF gateway status"
+  - platform: custom
+    lambda: |-
+      KNXRFGateway *c = static_cast<KNXRFGateway *>(const_cast<custom_component::CustomComponentConstructor *>(&gateway)->get_component(0));
+      UponorThermostat *sensor = c->sensors["107400007850"];
+      return {sensor->battery_state_sensor };
+    binary_sensors:
+      - name: "Office thermostat battery state"
+        device_class: "battery"
